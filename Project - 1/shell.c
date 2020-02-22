@@ -6,6 +6,8 @@
 #include <string.h>
 #include <stdbool.h>
 #include <errno.h>
+#include <fcntl.h>
+
 const char * sysname = "shellgibi";
 
 enum return_codes {
@@ -13,13 +15,12 @@ enum return_codes {
 	EXIT = 1,
 	UNKNOWN = 2,
 };
-
 struct command_t {
 	char *name;
 	bool background;
 	bool auto_complete;
-	int arg_count;
     char *path;
+	int arg_count;
 	char **args;
 	char *redirects[3]; // in/out redirection
 	struct command_t *next; // for piping
@@ -80,12 +81,13 @@ int free_command(struct command_t *command)
  */
 int show_prompt()
 {
+
 	char cwd[1024], hostname[1024];
     gethostname(hostname, sizeof(hostname));
 	getcwd(cwd, sizeof(cwd));
-	// printf("%s@%s:%s %s$ ", getenv("USER"), hostname, cwd, sysname);
-    printf("shell$ ");
-	return 0;
+	//printf("%s@%s:%s %s$ ", getenv("USER"), hostname, cwd, sysname);
+	printf("shell$ ");
+    return 0;
 }
 /**
  * Parse a command string into a command struct
@@ -113,23 +115,35 @@ int parse_command(char *buf, struct command_t *command)
 
 	char *pch = strtok(buf, splitters);
 	command->name=(char *)malloc(strlen(pch)+1);
-
-    char cwd[1024];
-    // getcwd(cwd, sizeof(cwd));
-
-    FILE *fptr = popen(strcat("whereis", command->name), "r"); 
-    fgets(cwd, sizeof(cwd), fptr);
-    pclose(fptr);
-
-    printf("Getcwd read: %s\n", cwd);
-
-    command->path = (char *) malloc(strlen(cwd)+1);
-    strcpy(command->path, cwd);
-
 	if (pch==NULL)
 		command->name[0]=0;
 	else
 		strcpy(command->name, pch);
+
+    // ################################### Getting Path ###################################
+	
+	char cwd[1024];
+	char pathCommand[] = "which ";
+	strcat(pathCommand, command->name);
+
+    FILE *fptr = popen(pathCommand, "r"); 
+    
+	if (fptr == NULL) {
+    	printf("Failed to run command\n" );
+    	exit(1);
+  	}
+
+	fgets(cwd, sizeof(cwd), fptr);
+
+	pclose(fptr);
+
+    cwd[strlen(cwd)-1] = '\0';
+	// printf("Getcwd read: <%s>\n", cwd);
+
+    command->path = (char *) malloc(strlen(cwd)+1);
+    strcpy(command->path, cwd);
+
+	// ################################### Getting Path ###################################
 
 	command->args=(char **)malloc(sizeof(char *));
 
@@ -222,6 +236,7 @@ void prompt_backspace()
  */
 int prompt(struct command_t *command)
 {
+
 	int index=0;
 	char c;
 	char buf[4096];
@@ -239,7 +254,6 @@ int prompt(struct command_t *command)
     // Those new settings will be set to STDIN
     // TCSANOW tells tcsetattr to change attributes immediately.
     tcsetattr(STDIN_FILENO, TCSANOW, &new_termios);
-
 
     //FIXME: backspace is applied before printing chars
 	show_prompt();
@@ -310,17 +324,15 @@ int prompt(struct command_t *command)
 
   	parse_command(buf, command);
 
-  	print_command(command); // DEBUG: uncomment for debugging
+  	// print_command(command); // DEBUG: uncomment for debugging
 
     // restore the old settings
     tcsetattr(STDIN_FILENO, TCSANOW, &backup_termios);
   	return SUCCESS;
 }
-
 int process_command(struct command_t *command);
-
-int main(){
-
+int main()
+{
 	while (1)
 	{
 		struct command_t *command=malloc(sizeof(struct command_t));
@@ -360,11 +372,10 @@ int process_command(struct command_t *command)
 	}
 
 	pid_t pid=fork();
-
 	if (pid==0) // child
 	{
 		/// This shows how to do exec with environ (but is not available on MacOs)
-	    extern char** environ; // environment variables
+	    // extern char** environ; // environment variables
 		// execvpe(command->name, command->args, environ); // exec+args+path+environ
 
 		/// This shows how to do exec with auto-path resolve
@@ -384,20 +395,27 @@ int process_command(struct command_t *command)
 		// set args[arg_count-1] (last) to NULL
 		command->args[command->arg_count-1]=NULL;
 
+        // print_command(command);
+
 		// execvp(command->name, command->args); // exec+args+path
 		
 		/// TODO: do your own exec with path resolving using execv()
 
-        execv(command->path, command->args);
-        exit(0);
+        printf("child pid <%d>\n", getpid());
 
+        execv(command->path, command->args);
+
+        exit(0);
 	}
 	else
 	{
+
+        printf("parent pid <%d>\n", getpid());
+
 		if (!command->background)
 			wait(0); // wait for child process to finish
-		
-        return SUCCESS;
+
+		return SUCCESS;
 	}
 
 	// TODO: your implementation here
