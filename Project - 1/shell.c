@@ -90,7 +90,7 @@ int show_prompt()
 	char cwd[1024], hostname[1024];
     gethostname(hostname, sizeof(hostname));
 	getcwd(cwd, sizeof(cwd));
-	//printf("%s@%s:%s %s$ ", getenv("USER"), hostname, cwd, sysname);
+	// printf("%s@%s:%s %s$ ", getenv("USER"), hostname, cwd, sysname);
 	printf("shell$ ");
     return 0;
 }
@@ -272,6 +272,7 @@ int prompt(struct command_t *command)
 		if (c==9) // handle tab
 		{
 			buf[index++]='?'; // autocomplete
+
 			break;
 		}
 
@@ -335,9 +336,10 @@ int prompt(struct command_t *command)
     tcsetattr(STDIN_FILENO, TCSANOW, &backup_termios);
   	return SUCCESS;
 }
+
 int process_command(struct command_t *command);
-int main()
-{
+
+int main() {
 	while (1)
 	{
 		struct command_t *command=malloc(sizeof(struct command_t));
@@ -407,15 +409,32 @@ int process_command(struct command_t *command) {
 
         // execv(command->path, command->args);
 
-		handle_in_out(command);
-	
+		if (strcmp(command->name, "sendmail") == 0){
+			execlp("python", "python", "sendmail.py", "test", (char*) NULL);
+		}else if (strcmp(command->name, "google") == 0){
+			execlp("python", "python", "searchgoogle.py", "test", (char*) NULL);
+		}
+		else{
+			if (command->background){
+				printf("[1] %d\n", getpid());
+				handle_in_out(command);
+			}else{
+				handle_in_out(command);
+			}
+		}
+
         exit(0);
 	}
 	else
 	{
+		unsigned int microseconds = 10;
+		
+		// sleep(1);
 
 		if (!command->background)
 			wait(0); // wait for child process to finish
+		else
+			usleep(microseconds);
 
 		return SUCCESS;
 	}
@@ -426,6 +445,7 @@ int process_command(struct command_t *command) {
 	return UNKNOWN;
 
 }
+
 
 int handle_in_out(struct command_t *command) {
 
@@ -442,7 +462,7 @@ int handle_in_out(struct command_t *command) {
 		file_in = dup(std_in);
 	}
 
-	int file_out;
+	int file_out, file_out1;
 	int fhchild;
 
 	while (command != NULL) {
@@ -458,7 +478,7 @@ int handle_in_out(struct command_t *command) {
 				}
 
 				if (command->redirects[2]){
-					file_out = open(command->redirects[2], O_RDWR | O_APPEND | O_CREAT, S_IRUSR | S_IWUSR);
+					file_out1 = open(command->redirects[2], O_RDWR | O_APPEND | O_CREAT, S_IRUSR | S_IWUSR);
 				}
 
 			}else {
@@ -482,6 +502,7 @@ int handle_in_out(struct command_t *command) {
 
 		// redirect outputs
 		dup2(file_out, 1);
+		dup2(file_out1, 1);
 		// close(file_out);
 
 		fhchild = fork();
