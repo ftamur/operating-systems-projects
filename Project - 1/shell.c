@@ -364,25 +364,7 @@ int main() {
 
 int process_command(struct command_t *command)
 {
-	// int r;
-	// if (strcmp(command->name, "")==0) return SUCCESS;
-	// if (strcmp(command->name, "exit")==0)
-	// 	return EXIT;
-	// if (strcmp(command->name, "cd")==0)
-	// {
-	// 	if (command->arg_count > 0)
-	// 	{
-	// 		r=chdir(command->args[0]);
-	// 		if (r==-1)
-	// 			printf("-%s: %s: %s\n", sysname, command->name, strerror(errno));
-	// 		return SUCCESS;
-	// 	}
-	// }
 	
-	// pid_t pid=fork();
-
-	// if (pid==0) // child {
-		
 	if(strcmp(command->name, "myjobs") == 0)
 	{
 		char *usr = getenv("USER");
@@ -419,6 +401,7 @@ int process_command(struct command_t *command)
 			exit(0);
 		}
 		printf("continued process %d:\t %s \n",PID, name);
+
 	} 
 	else if(strcmp(command->name, "myfg") == 0)
 	{
@@ -453,6 +436,12 @@ int process_command(struct command_t *command)
 		char *music = command->args[1];
 		setAlarm(music, hour, min);
 	}
+	else if (strcmp(command->name, "sendmail") == 0) {
+		execlp("python", "python", "sendmail.py", "test", (char*) NULL);
+	}
+	else if (strcmp(command->name, "google") == 0) {
+		execlp("python", "python", "searchgoogle.py", "test", (char*) NULL);
+	}
 	else
 	{
 		command->args=(char **)realloc(
@@ -481,18 +470,108 @@ int process_command(struct command_t *command)
 		
 	}
 	
-	// exit(0);	
+	return 0;
+}
 
-	// }
-	// else{
-	// 	if (!command->background)
-	// 		wait(0); // wait for child process to finish
-	// 	return SUCCESS;
-	// }
 
-	// TODO: your implementation here
-	printf("-%s: %s: command not found\n", sysname, command->name);
-	return UNKNOWN;
+int handle_in_out(struct command_t *command) {
+
+	// print_command(command);
+
+	int r;
+
+	if (strcmp(command->name, "")==0) return SUCCESS;
+	if (strcmp(command->name, "exit")==0)
+		return EXIT;
+	if (strcmp(command->name, "cd")==0)
+	{
+		if (command->arg_count > 0)
+		{
+			r=chdir(command->args[0]);
+			if (r==-1)
+				printf("-%s: %s: %s\n", sysname, command->name, strerror(errno));
+			return SUCCESS;
+		}
+	}
+
+	int std_in = dup(0);
+	int std_out = dup(1);
+	
+	int file_in;
+
+	if (command->redirects[0]) {
+		file_in = open(command->redirects[0], O_RDWR);
+	}else {
+		file_in = dup(std_in);
+	}
+
+	int file_out;
+	int fhchild;
+
+	while (command != NULL) {
+
+		dup2(file_in, 0);
+		close(file_in);
+
+		if (command->next == NULL) {
+
+			// last command
+			if (command->redirects[1] || command->redirects[2]) {
+				if (command->redirects[1]){
+					file_out = open(command->redirects[1], O_RDWR | O_TRUNC | O_CREAT, S_IRUSR | S_IWUSR);
+				}
+
+				if (command->redirects[2]){
+					file_out = open(command->redirects[2], O_RDWR | O_APPEND | O_CREAT, S_IRUSR | S_IWUSR);
+				}
+
+			}else {
+				file_out = dup(std_out); 
+			}
+
+
+		}else {
+			// more commands
+
+			// firat&harun pipe
+			int fhpipe[2];
+
+			// open the roads we are coming...
+			pipe(fhpipe);
+
+			file_out = fhpipe[1];
+			file_in = fhpipe[0];
+			
+		}
+
+		// redirect outputs
+		dup2(file_out, 1);
+		// close(file_out);
+
+		fhchild = fork();
+
+		if (fhchild == 0) {
+			process_command(command);
+			exit(0);
+		}
+
+		if (command->next == NULL)
+			break;
+
+		command = command->next;
+		
+	} // while
+
+	// give what you have taken
+	dup2(std_in, 0);
+	dup2(std_out, 1);
+	close(std_in);
+	close(std_out);
+
+	if (!command->background)
+		wait(NULL);
+
+	return 0;
 }
 
 void setAlarm(char *music, char *hour, char *min){
@@ -537,105 +616,4 @@ void setAlarm(char *music, char *hour, char *min){
 	char *args[] = {"bash", "job.txt", NULL};
   	execv("/bin/bash", args);
 	
-}
-
-
-int handle_in_out(struct command_t *command) {
-
-	// print_command(command);
-
-	int r;
-
-	if (strcmp(command->name, "")==0) return SUCCESS;
-	if (strcmp(command->name, "exit")==0)
-		return EXIT;
-	if (strcmp(command->name, "cd")==0)
-	{
-		if (command->arg_count > 0)
-		{
-			r=chdir(command->args[0]);
-			if (r==-1)
-				printf("-%s: %s: %s\n", sysname, command->name, strerror(errno));
-			return SUCCESS;
-		}
-	}
-
-
-	int std_in = dup(0);
-	int std_out = dup(1);
-	
-	int file_in;
-
-	if (command->redirects[0]) {
-		file_in = open(command->redirects[0], O_RDWR);
-	}else {
-		file_in = dup(std_in);
-	}
-
-	int file_out, file_out1;
-	int fhchild;
-
-	while (command != NULL) {
-
-		dup2(file_in, 0);
-		close(file_in);
-
-		if (command->next == NULL) {
-			// last command
-			if (command->redirects[1] || command->redirects[2]) {
-				if (command->redirects[1]){
-					file_out = open(command->redirects[1], O_RDWR | O_TRUNC | O_CREAT, S_IRUSR | S_IWUSR);
-				}
-
-				if (command->redirects[2]){
-					file_out1 = open(command->redirects[2], O_RDWR | O_APPEND | O_CREAT, S_IRUSR | S_IWUSR);
-				}
-
-			}else {
-				file_out = dup(std_out); 
-			}
-
-
-		}else {
-			// more commands
-
-			// firat&harun pipe
-			int fhpipe[2];
-
-			// open the roads we are coming...
-			pipe(fhpipe);
-
-			file_out = fhpipe[1];
-			file_in = fhpipe[0];
-			
-		}
-
-		// redirect outputs
-		dup2(file_out, 1);
-		dup2(file_out1, 1);
-		// close(file_out);
-
-		fhchild = fork();
-
-		if (fhchild == 0) {
-			// execvp(command->name, command->args);
-			process_command(command);
-			perror("fh error\n");
-			exit(0);
-		}
-
-		command = command->next;
-		
-	} // while
-
-	// give what you have taken
-	dup2(std_in, 0);
-	dup2(std_out, 1);
-	close(std_in);
-	close(std_out);
-
-	if (!command->background)
-		wait(NULL);
-
-	return 0;
 }

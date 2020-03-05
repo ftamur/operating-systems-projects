@@ -8,8 +8,8 @@ try:
     from googlesearch import search
 except:
     install('google')
-else:
-    from googlesearch import search
+
+from googlesearch import search
 
 query = input("Type query want to search: ")
   
