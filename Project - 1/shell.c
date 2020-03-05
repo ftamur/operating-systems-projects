@@ -9,6 +9,8 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/types.h>
+#include <signal.h>
 
 const char * sysname = "shellgibi";
 
@@ -338,6 +340,7 @@ int prompt(struct command_t *command)
 }
 
 int process_command(struct command_t *command);
+void setAlarm(char *music, char *hour, char *min);
 
 int main() {
 	while (1)
@@ -349,7 +352,7 @@ int main() {
 		code = prompt(command);
 		if (code==EXIT) break;
 
-		code = process_command(command);
+		code = handle_in_out(command);
 		if (code==EXIT) break;
 
 		free_command(command);
@@ -359,13 +362,193 @@ int main() {
 	return 0;
 }
 
-int process_command(struct command_t *command) {
-	int r;
-	if (strcmp(command->name, "")==0) return SUCCESS;
+int process_command(struct command_t *command)
+{
+	// int r;
+	// if (strcmp(command->name, "")==0) return SUCCESS;
+	// if (strcmp(command->name, "exit")==0)
+	// 	return EXIT;
+	// if (strcmp(command->name, "cd")==0)
+	// {
+	// 	if (command->arg_count > 0)
+	// 	{
+	// 		r=chdir(command->args[0]);
+	// 		if (r==-1)
+	// 			printf("-%s: %s: %s\n", sysname, command->name, strerror(errno));
+	// 		return SUCCESS;
+	// 	}
+	// }
+	
+	// pid_t pid=fork();
 
+	// if (pid==0) // child {
+		
+	if(strcmp(command->name, "myjobs") == 0)
+	{
+		char *usr = getenv("USER");
+		char *arg[] = {"ps", "-o", "pid,state,comm", "-u", usr, NULL};
+		execv("/bin/ps", arg);
+	}
+	else if(strcmp(command->name, "pause") == 0)
+	{
+		char *PID = command->args[0];
+		int pid_proc = atoi(PID);
+		int stat = kill(pid_proc, SIGSTOP);
+		if(stat != 0){
+			printf("pause failed");
+		}
+	} 
+	else if(strcmp(command->name, "mybg") == 0)
+	{
+		FILE *fp;
+		char name[100], path[100];
+		char *pid_comm = command->args[0];
+		sprintf(path, "/bin/ps -p %s -o args=", pid_comm);
+		
+		fp = popen(path, "r");
+		if (fp == NULL) {
+			printf("Failed to run command\n");
+			exit(1);
+		}
+		fgets(name, sizeof(name), fp);
+		pclose(fp);
+		int PID = atoi(pid_comm);
+		int stat = kill(PID, SIGCONT);
+		if(stat != 0){
+			printf("mybg %d failed", PID);
+			exit(0);
+		}
+		printf("continued process %d:\t %s \n",PID, name);
+	} 
+	else if(strcmp(command->name, "myfg") == 0)
+	{
+		FILE *fp, *sp;
+		char name[100], proc[100], proc2[100];
+		char *pid_comm = command->args[0];
+		sprintf(proc, "/bin/ps -p %s -o args=", pid_comm);
+		
+		fp = popen(proc, "r");
+		if (fp == NULL) {
+			printf("Failed to run proc\n");
+			exit(1);
+		}
+		fgets(name, sizeof(name), fp);
+		pclose(fp);
+		int PID = atoi(pid_comm);
+		int stat = kill(PID, SIGCONT);
+		if(stat != 0){
+			printf("myfg %d failed", PID);
+			exit(0);
+		}
+		printf("continued process %d: \t%s \n",PID, name);
+		int check;
+		while((check = kill(PID,0)) == 0);
+			
+	
+	} 
+	else if(strcmp(command->name, "alarm") == 0)
+	{
+		char *hour = strtok(command->args[0], ".");
+		char *min = strtok(NULL, ".");
+		char *music = command->args[1];
+		setAlarm(music, hour, min);
+	}
+	else
+	{
+		command->args=(char **)realloc(
+		command->args, sizeof(char *)*(command->arg_count+=2));
+		// shift everything forward by 1
+		for (int i=command->arg_count-2;i>0;--i)
+			command->args[i]=command->args[i-1];
+		// set args[0] as a copy of name
+		command->args[0]=strdup(command->name);
+		// set args[arg_count-1] (last) to NULL
+		command->args[command->arg_count-1]=NULL;
+		char path[1024];
+		char which_command[] = "which ";
+		strcat(which_command, command->name);
+		FILE *fptr = popen(which_command, "r"); 
+
+		if (fptr == NULL) {
+			printf("Failed to run command\n" );
+			exit(1);
+		}
+
+		fgets(path, sizeof(path), fptr);
+		pclose(fptr);
+		path[strlen(path)-1] = '\0';
+		execv(path, command->args);
+		
+	}
+	
+	// exit(0);	
+
+	// }
+	// else{
+	// 	if (!command->background)
+	// 		wait(0); // wait for child process to finish
+	// 	return SUCCESS;
+	// }
+
+	// TODO: your implementation here
+	printf("-%s: %s: command not found\n", sysname, command->name);
+	return UNKNOWN;
+}
+
+void setAlarm(char *music, char *hour, char *min){
+	char pathbuf[300];
+	char *musicpath = realpath(music,pathbuf);
+	char bash[300]; // alarm.sh to play audio
+
+	strcpy(bash, "!/bin/bash\nexport XDG_RUNTIME_DIR=/run/user/$(id -u)\n");
+	strcat(bash, "play ");
+	strcat(bash, musicpath);
+	strcat(bash, "\necho hello >> out.txt");
+ 
+ 	char out[100] = " >> /home/$USER/alarm.sh";
+ 	char job[500]; // script to run by this command
+	strcpy(job, "echo \"");
+	strcat(job, bash);
+	strcat(job, "\"");
+ 	strcat(job,out);
+ 
+	char cron[300]; // create crontab directory file
+	strcpy(cron, "echo \"");
+	strcat(cron, min);
+	strcat(cron, " ");// if (!command->background)
+	// 	wait(NULL);
+
+	strcat(cron, hour);
+	strcat(cron, " * * * ./alarm.sh\" >> /home/$USER/alarmFile");
+	
+	char *cronFile = "crontab /home/$USER/alarmFile";
+ 	FILE *job_file = fopen("job.txt", "w");
+
+	// write everything to a job file and then execute
+	fprintf(job_file, "touch /home/$USER/alarm.sh\n");
+ 	fprintf(job_file, "%s\n", job);
+	fprintf(job_file, "chmod +x /home/$USER/alarm.sh\n");
+	fprintf(job_file, "%s\n", cron);
+	fprintf(job_file, "%s\n", cronFile);
+	fprintf(job_file, "rm -f /home/$USER/alarmFile\n");
+	fprintf(job_file, "rm -f job.txt\n");
+ 	fclose(job_file);
+
+	char *args[] = {"bash", "job.txt", NULL};
+  	execv("/bin/bash", args);
+	
+}
+
+
+int handle_in_out(struct command_t *command) {
+
+	// print_command(command);
+
+	int r;
+
+	if (strcmp(command->name, "")==0) return SUCCESS;
 	if (strcmp(command->name, "exit")==0)
 		return EXIT;
-
 	if (strcmp(command->name, "cd")==0)
 	{
 		if (command->arg_count > 0)
@@ -377,79 +560,6 @@ int process_command(struct command_t *command) {
 		}
 	}
 
-	pid_t pid=fork();
-	if (pid==0) // child
-	{
-		/// This shows how to do exec with environ (but is not available on MacOs)
-	    // extern char** environ; // environment variables
-		// execvpe(command->name, command->args, environ); // exec+args+path+environ
-
-		/// This shows how to do exec with auto-path resolve
-		// add a NULL argument to the end of args, and the name to the beginning
-		// as required by exec
-
-		// increase args size by 2
-		command->args=(char **)realloc(
-			command->args, sizeof(char *)*(command->arg_count+=2));
-
-		// shift everything forward by 1
-		for (int i=command->arg_count-2;i>0;--i)
-			command->args[i]=command->args[i-1];
-
-		// set args[0] as a copy of name
-		command->args[0]=strdup(command->name);
-		// set args[arg_count-1] (last) to NULL
-		command->args[command->arg_count-1]=NULL;
-
-        // print_command(command);
-
-		// execvp(command->name, command->args); // exec+args+path
-		
-		/// TODO: do your own exec with path resolving using execv()
-
-        // execv(command->path, command->args);
-
-		if (strcmp(command->name, "sendmail") == 0){
-			execlp("python", "python", "sendmail.py", "test", (char*) NULL);
-		}else if (strcmp(command->name, "google") == 0){
-			execlp("python", "python", "searchgoogle.py", "test", (char*) NULL);
-		}
-		else{
-			if (command->background){
-				printf("[1] %d\n", getpid());
-				handle_in_out(command);
-			}else{
-				handle_in_out(command);
-			}
-		}
-
-        exit(0);
-	}
-	else
-	{
-		unsigned int microseconds = 10;
-		
-		// sleep(1);
-
-		if (!command->background)
-			wait(0); // wait for child process to finish
-		else
-			usleep(microseconds);
-
-		return SUCCESS;
-	}
-
-	// TODO: your implementation here
-
-	printf("-%s: %s: command not found\n", sysname, command->name);
-	return UNKNOWN;
-
-}
-
-
-int handle_in_out(struct command_t *command) {
-
-	// print_command(command);
 
 	int std_in = dup(0);
 	int std_out = dup(1);
@@ -508,7 +618,8 @@ int handle_in_out(struct command_t *command) {
 		fhchild = fork();
 
 		if (fhchild == 0) {
-			execvp(command->name, command->args);
+			// execvp(command->name, command->args);
+			process_command(command);
 			perror("fh error\n");
 			exit(0);
 		}
