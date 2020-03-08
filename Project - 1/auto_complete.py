@@ -15,7 +15,7 @@ if len(os.sys.argv) > 1:
 
     for dirs in dirs_list:
         if command == dirs[:len(command)]:
-            print(dirs, end="")
+            print(dirs)
 
 
 

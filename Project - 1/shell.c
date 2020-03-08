@@ -33,7 +33,7 @@ struct command_t {
 };
 
 int handle_in_out(struct command_t *command);
-void handle_auto_complete(char *command, char* complete);
+int handle_auto_complete(char *command, char* complete);
 
 /**
  * Prints a command struct
@@ -57,7 +57,6 @@ void print_command(struct command_t * command)
 		printf("\tPiped to:\n");
 		print_command(command->next);
 	}
-
 
 }
 /**
@@ -107,6 +106,9 @@ int show_prompt()
  */
 int parse_command(char *buf, struct command_t *command)
 {
+	if (strlen(buf) == 0)
+		return 0;
+
 	const char *splitters=" \t"; // split at whitespace
 	int index, len;
 	len=strlen(buf);
@@ -272,27 +274,36 @@ int prompt(struct command_t *command)
 	int multicode_state=0;
 	buf[0]=0;
 
-	int last_index = 0;
+	int space_index = 0;
 
   	while (1)
   	{
 		c=getchar();
 		// printf("Keycode: %u\n", c); // DEBUG: uncomment for debugging
 
+
 		if (c==9) // handle tab
 		{
 			// buf[index++]='?'; // autocomplete
 			char complete[256] = "\0";
 
-			handle_auto_complete(buf, complete);
+			int match_count = handle_auto_complete(buf, complete);
 
-			if (strlen(complete) > 0){
-		
-				for (int i=index; i<strlen(complete); i++){
-					putchar((char) complete[i]);
-					buf[index++]= complete[i];
-				}	 
+			if (match_count > 1) {
+				printf("\n");
+				puts(complete);
+				break;
+
+			}else {
+
+				if (strlen(complete) > 0){
 			
+					for (int i=index - space_index; i<strlen(complete); i++){
+						putchar((char) complete[i]);
+						buf[index++]= complete[i];
+					}	 
+		
+				}
 			}
 					
 		}
@@ -320,6 +331,11 @@ int prompt(struct command_t *command)
 			multicode_state=2;
 			continue;
 		}
+
+		if (c == 32){
+			space_index = index + 1;
+		}
+
 		if (c==65 && multicode_state==2) // up arrow
 		{
 			int i;
@@ -339,12 +355,10 @@ int prompt(struct command_t *command)
 		else
 			multicode_state=0;
 
-		if (c != 9){
+		if (c != 9 && c != '\n'){
 			putchar(c); // echo the character
 			buf[index++]=c;
 		}
-			
-		
 
 		if (index>=sizeof(buf)-1) break;
 
@@ -355,8 +369,11 @@ int prompt(struct command_t *command)
 			return EXIT;
   	}
 
-  	if (index>0 && buf[index-1]=='\n') // trim newline from the end
-  		index--;
+  	if (index>0){ // trim newline from the end
+		if (buf[index-1]=='\n')
+		  	index--;
+	} 
+  		
   	buf[index++]=0; // null terminate string
 
   	strcpy(oldbuf, buf);
@@ -388,7 +405,7 @@ int main() {
 
 		code = handle_in_out(command);
 		if (code==EXIT) break;
-
+		
 		free_command(command);
 	}
 
@@ -398,7 +415,7 @@ int main() {
 
 int process_command(struct command_t *command)
 {
-	
+
 	if(strcmp(command->name, "myjobs") == 0)
 	{
 		char *usr = getenv("USER");
@@ -511,8 +528,11 @@ int process_command(struct command_t *command)
 
 int handle_in_out(struct command_t *command) {
 
-	// print_command(command);
-
+	if (!command->name){
+		putchar('\n');
+		return 0;
+	}
+		
 	int r;
 
 	if (strcmp(command->name, "")==0) return SUCCESS;
@@ -653,11 +673,12 @@ void setAlarm(char *music, char *hour, char *min){
 	
 }
 
-void handle_auto_complete(char *command, char *complete) {
+int handle_auto_complete(char *command, char *complete) {
 
 	FILE *fp;
 	char complete_[256] = "\0";
 	char python_command[256] = "python auto_complete.py ";
+	int matched_count = 0;
 
 	strcat(python_command, command);
 
@@ -668,10 +689,15 @@ void handle_auto_complete(char *command, char *complete) {
 		exit(1);
 	}
 
-	fgets(complete_, sizeof(complete_), fp);
-	strcpy(complete, complete_);
+	while (fgets(complete_, sizeof(complete_), fp)) {
+		matched_count++;
+		strcat(complete, complete_);
+		strcat(complete, " ");
+	}
 
 	pclose(fp);
+
+	return matched_count;
 
 }
 
