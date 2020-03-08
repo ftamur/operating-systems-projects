@@ -251,7 +251,7 @@ int prompt(struct command_t *command)
 
 	int index=0;
 	char c;
-	char buf[4096];
+	char buf[4096] = "\0";
 	static char oldbuf[4096];
 
     // tcgetattr gets the parameters of the current terminal
@@ -271,6 +271,9 @@ int prompt(struct command_t *command)
 	show_prompt();
 	int multicode_state=0;
 	buf[0]=0;
+
+	int last_index = 0;
+
   	while (1)
   	{
 		c=getchar();
@@ -279,21 +282,19 @@ int prompt(struct command_t *command)
 		if (c==9) // handle tab
 		{
 			// buf[index++]='?'; // autocomplete
-			char complete[256] = "Default Command to initialize Commnd";
-  		
-			handle_auto_complete(buf, complete);
-			// printf("Complete: %s", complete);
-			//printf("buffer: %s\n", buf);
-			
-			if (strlen(complete) > 0){
-				for (int i=strlen(buf); i<strlen(complete); i++){
-					putchar((char) complete[i]);
-					buf[index++]=c;
-					//index--;
-				}	
-			}
+			char complete[256] = "\0";
 
-			// printf("len: %ld", strlen(buf));
+			handle_auto_complete(buf, complete);
+
+			if (strlen(complete) > 0){
+		
+				for (int i=index; i<strlen(complete); i++){
+					putchar((char) complete[i]);
+					buf[index++]= complete[i];
+				}	 
+			
+			}
+					
 		}
 				
 
@@ -307,11 +308,13 @@ int prompt(struct command_t *command)
 			buf[index] = '\0';
 			continue;
 		}
+
 		if (c==27 && multicode_state==0) // handle multi-code keys
 		{
 			multicode_state=1;
 			continue;
 		}
+
 		if (c==91 && multicode_state==1)
 		{
 			multicode_state=2;
@@ -357,6 +360,9 @@ int prompt(struct command_t *command)
   	buf[index++]=0; // null terminate string
 
   	strcpy(oldbuf, buf);
+
+	// printf("buffer: %s", buf);
+	// printf("old buffer: %s", oldbuf);
 
   	parse_command(buf, command);
 
@@ -650,7 +656,7 @@ void setAlarm(char *music, char *hour, char *min){
 void handle_auto_complete(char *command, char *complete) {
 
 	FILE *fp;
-	char complete_[256];
+	char complete_[256] = "\0";
 	char python_command[256] = "python auto_complete.py ";
 
 	strcat(python_command, command);
@@ -662,7 +668,8 @@ void handle_auto_complete(char *command, char *complete) {
 		exit(1);
 	}
 
-	fgets(complete, strlen(complete), fp);
+	fgets(complete_, sizeof(complete_), fp);
+	strcpy(complete, complete_);
 
 	pclose(fp);
 
