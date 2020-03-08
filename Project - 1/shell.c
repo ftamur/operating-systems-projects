@@ -11,8 +11,10 @@
 #include <sys/types.h>
 #include <sys/types.h>
 #include <signal.h>
+#include <dirent.h>
 
 const char * sysname = "shellgibi";
+const char * commands[6] = {"clear", "cd", "grep", "sleep", "touch", "mkdir"};
 
 enum return_codes {
 	SUCCESS = 0,
@@ -31,6 +33,7 @@ struct command_t {
 };
 
 int handle_in_out(struct command_t *command);
+void handle_auto_complete(char *command, char* complete);
 
 /**
  * Prints a command struct
@@ -122,9 +125,11 @@ int parse_command(char *buf, struct command_t *command)
 
 	char *pch = strtok(buf, splitters);
 	command->name=(char *)malloc(strlen(pch)+1);
-	if (pch==NULL)
+
+	if (pch==NULL){
 		command->name[0]=0;
-	else
+		const char * commands[6] = {"clear", "cd", "grep", "sleep", "touch", "mkdir"};	
+	}else
 		strcpy(command->name, pch);
 
     // ################################### Getting Path ###################################
@@ -273,10 +278,24 @@ int prompt(struct command_t *command)
 
 		if (c==9) // handle tab
 		{
-			buf[index++]='?'; // autocomplete
+			// buf[index++]='?'; // autocomplete
+			char complete[256] = "Default Command to initialize Commnd";
+  		
+			handle_auto_complete(buf, complete);
+			// printf("Complete: %s", complete);
+			//printf("buffer: %s\n", buf);
+			
+			if (strlen(complete) > 0){
+				for (int i=strlen(buf); i<strlen(complete); i++){
+					putchar((char) complete[i]);
+					buf[index++]=c;
+					//index--;
+				}	
+			}
 
-			break;
+			// printf("len: %ld", strlen(buf));
 		}
+				
 
 		if (c==127) // handle backspace
 		{
@@ -285,6 +304,7 @@ int prompt(struct command_t *command)
 				prompt_backspace();
 				index--;
 			}
+			buf[index] = '\0';
 			continue;
 		}
 		if (c==27 && multicode_state==0) // handle multi-code keys
@@ -316,14 +336,22 @@ int prompt(struct command_t *command)
 		else
 			multicode_state=0;
 
-		putchar(c); // echo the character
-		buf[index++]=c;
+		if (c != 9){
+			putchar(c); // echo the character
+			buf[index++]=c;
+		}
+			
+		
+
 		if (index>=sizeof(buf)-1) break;
+
 		if (c=='\n') // enter key
 			break;
+
 		if (c==4) // Ctrl+D
 			return EXIT;
   	}
+
   	if (index>0 && buf[index-1]=='\n') // trim newline from the end
   		index--;
   	buf[index++]=0; // null terminate string
@@ -394,6 +422,7 @@ int process_command(struct command_t *command)
 		}
 		fgets(name, sizeof(name), fp);
 		pclose(fp);
+
 		int PID = atoi(pid_comm);
 		int stat = kill(PID, SIGCONT);
 		if(stat != 0){
@@ -617,3 +646,27 @@ void setAlarm(char *music, char *hour, char *min){
   	execv("/bin/bash", args);
 	
 }
+
+void handle_auto_complete(char *command, char *complete) {
+
+	FILE *fp;
+	char complete_[256];
+	char python_command[256] = "python auto_complete.py ";
+
+	strcat(python_command, command);
+
+	fp = popen(python_command, "r");
+
+	if (fp == NULL) {
+		printf("Failed to run command\n");
+		exit(1);
+	}
+
+	fgets(complete, strlen(complete), fp);
+
+	pclose(fp);
+
+}
+
+
+
