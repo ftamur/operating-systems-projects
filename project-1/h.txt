@@ -1,0 +1,4 @@
+-shellgibi: ./for_inp: command not found
+this is for test.
+I am in the for_input: this is for test.
+I am in the for_input: this is for test.
