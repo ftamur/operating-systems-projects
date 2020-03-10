@@ -14,6 +14,7 @@
 #include <dirent.h>
 
 const char * sysname = "shellgibi";
+char ** commands;
 
 enum return_codes {
 	SUCCESS = 0,
@@ -33,6 +34,9 @@ struct command_t {
 
 int handle_in_out(struct command_t *command);
 int handle_auto_complete(char *command, char* complete);
+
+int filter(const char *command, char * dirs[], int dirs_len, char *matched[]);
+void listFiles(const char *path, char * dirs[], int index);
 
 /**
  * Prints a command struct
@@ -255,6 +259,14 @@ int prompt(struct command_t *command)
 	char buf[4096] = "\0";
 	static char oldbuf[4096];
 
+	char ** dirs = (char **) malloc(2048 * sizeof(char *));
+    char ** matched = (char **) malloc(2048 * sizeof(char *));
+
+	for (int i=0; i<2048; i++) {
+		dirs[i] = malloc(512 * sizeof(char *));
+		matched[i] =  malloc(512 * sizeof(char *));
+	}
+
     // tcgetattr gets the parameters of the current terminal
     // STDIN_FILENO will tell tcgetattr that it should write the settings
     // of stdin to oldt
@@ -284,21 +296,41 @@ int prompt(struct command_t *command)
 		if (c==9) // handle tab
 		{
 			// buf[index++]='?'; // autocomplete
-			char complete[256] = "\0";
 
-			int match_count = handle_auto_complete(buf, complete);
+			int match_count;
+
+			if (command->auto_complete){
+				listFiles(".", dirs, 0);
+
+				char dir_name[256];
+
+				for (int i=0; i<index-space_index; i++) {
+					dir_name[i] = buf[space_index+i]; 
+				}
+
+				dir_name[index-space_index] = '\0';
+
+				match_count = filter(dir_name, dirs, 2048, matched);
+			}else {
+				match_count = filter(buf, commands, 2048, matched);
+			}
 
 			if (match_count > 1) {
 				printf("\n");
-				puts(complete);
+
+				for (int i=0; i<match_count; i++)
+					puts(matched[i]);
+					
 				buf[0]=0;
 				break;
 
 			}else {
 
+				char *complete = matched[0];
+
 				if (strlen(complete) > 0){
 			
-					for (int i=index - space_index; i<strlen(complete)-1; i++){
+					for (int i=index - space_index; i<strlen(complete); i++){
 						putchar((char) complete[i]);
 						buf[index++]= complete[i];
 					}	 
@@ -308,7 +340,6 @@ int prompt(struct command_t *command)
 					
 		}
 				
-
 		if (c==127) // handle backspace
 		{
 			if (index>0)
@@ -334,6 +365,7 @@ int prompt(struct command_t *command)
 
 		if (c == 32){
 			space_index = index + 1;
+			command->auto_complete = true;
 		}
 
 		if (c==65 && multicode_state==2) // up arrow
@@ -393,6 +425,28 @@ int process_command(struct command_t *command);
 void setAlarm(char *music, char *hour, char *min);
 
 int main() {
+
+	commands = (char **) malloc(2048 * sizeof(char *));
+
+	char *builtins[] = {"alias", "bg", "bind", "break", "builtin",
+       "case", "cd", "clear", "command", "compgen", "complete", "continue", "declare", "dirs", "disown", "echo", "enable", "eval",
+       "exec",  "exit",  "export",  "fc",  "fg",  "getopts", "hash", "help", "history", "if", "jobs", "kill", "let", "local",
+       "logout", "popd", "printf", "pushd", "pwd", "read",  "readonly",  "return",  "set",  "shift",  "shopt",  "source",
+       "suspend",  "test",  "times",  "trap",  "type", "typeset", "ulimit", "umask", "unalias", "unset", "until", "wait",
+       "while"};
+
+	int builtins_len = 57;
+    
+	for (int i=0; i<2048; i++) {
+		commands[i] = malloc(512 * sizeof(char *));
+	}
+
+	for (int i=0; i<builtins_len; i++){
+		commands[i] = builtins[i];
+	}
+
+	listFiles("/bin", commands, builtins_len);
+
 	while (1)
 	{
 		struct command_t *command=malloc(sizeof(struct command_t));
@@ -675,7 +729,9 @@ void setAlarm(char *music, char *hour, char *min){
 
 int handle_auto_complete(char *command, char *complete) {
 
-	FILE *fp;
+	FILE *fp;int filter(const char *command, char * dirs[], int dirs_len, char *matched[]);
+void listFiles(const char *path, char * dirs[], int index);
+
 	char complete_[256] = "\0";
 	char python_command[256] = "python auto_complete.py ";
 	int matched_count = 0;
@@ -701,6 +757,46 @@ int handle_auto_complete(char *command, char *complete) {
 }
 
 
+void listFiles(const char *path, char * dirs[], int index) {
+    struct dirent *dp;
+    DIR *dir = opendir(path);
 
+    // Unable to open directory stream
+    if (!dir) 
+        return; 
 
+    while ((dp = readdir(dir)) != NULL)
+    {
+        // puts(dp->d_name);
+        strcpy(dirs[index], dp->d_name);
+		index++;
+    }
+
+    // Close directory stream
+    closedir(dir);
+
+}
+
+int filter(const char *command, char * dirs[], int dirs_len, char *matched[]) {
+    
+    int index;
+    int matched_index = 0;
+
+    for (int i=0; i<dirs_len; i++) {
+        index = 0;
+
+        while (command[index] == dirs[i][index]){
+            index++;
+            if (command[index] == '\0'){
+                // puts(dirs[i]);
+                strcpy(matched[matched_index], dirs[i]);
+                matched_index++;
+                break; 
+            }
+        }
+    }
+
+    return matched_index;
+
+}
 

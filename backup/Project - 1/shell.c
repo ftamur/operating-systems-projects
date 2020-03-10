@@ -292,13 +292,14 @@ int prompt(struct command_t *command)
 			if (match_count > 1) {
 				printf("\n");
 				puts(complete);
+				buf[0]=0;
 				break;
 
 			}else {
 
 				if (strlen(complete) > 0){
 			
-					for (int i=index - space_index; i<strlen(complete); i++){
+					for (int i=index - space_index; i<strlen(complete)-1; i++){
 						putchar((char) complete[i]);
 						buf[index++]= complete[i];
 					}	 
@@ -355,7 +356,7 @@ int prompt(struct command_t *command)
 		else
 			multicode_state=0;
 
-		if (c != 9 && c != '\n'){
+		if (c != 9){
 			putchar(c); // echo the character
 			buf[index++]=c;
 		}
@@ -369,9 +370,8 @@ int prompt(struct command_t *command)
 			return EXIT;
   	}
 
-  	if (index>0){ // trim newline from the end
-		if (buf[index-1]=='\n')
-		  	index--;
+  	if (index>0 && buf[index-1]=='\n'){ // trim newline from the end
+		index--;
 	} 
   		
   	buf[index++]=0; // null terminate string
@@ -517,6 +517,7 @@ int process_command(struct command_t *command)
 
 		fgets(path, sizeof(path), fptr);
 		pclose(fptr);
+		
 		path[strlen(path)-1] = '\0';
 		execv(path, command->args);
 		
@@ -677,7 +678,7 @@ int handle_auto_complete(char *command, char *complete) {
 
 	FILE *fp;
 	char complete_[256] = "\0";
-	char python_command[256] = "python auto_complete.py ";
+	char python_command[256] = "python project-1/auto_complete.py ";
 	int matched_count = 0;
 
 	strcat(python_command, command);
@@ -692,7 +693,6 @@ int handle_auto_complete(char *command, char *complete) {
 	while (fgets(complete_, sizeof(complete_), fp)) {
 		matched_count++;
 		strcat(complete, complete_);
-		strcat(complete, " ");
 	}
 
 	pclose(fp);
