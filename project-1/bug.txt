@@ -1,1 +1,0 @@
-I am in the for_input: -shellgibi: ./for_inp: command not found

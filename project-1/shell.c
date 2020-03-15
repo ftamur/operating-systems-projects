@@ -38,6 +38,9 @@ int handle_auto_complete(char *command, char* complete);
 int filter(const char *command, char * dirs[], int dirs_len, char *matched[]);
 void listFiles(const char *path, char * dirs[], int index);
 
+char *path_google;
+char *path_sendmail;
+
 /**
  * Prints a command struct
  * @param struct command_t *
@@ -98,7 +101,7 @@ int show_prompt()
     gethostname(hostname, sizeof(hostname));
 	getcwd(cwd, sizeof(cwd));
 	// printf("%s@%s:%s %s$ ", getenv("USER"), hostname, cwd, sysname);
-	printf("shell$ ");
+	printf("shell-awesome$ ");
     return 0;
 }
 /**
@@ -423,19 +426,30 @@ int prompt(struct command_t *command)
 
 int process_command(struct command_t *command);
 void setAlarm(char *music, char *hour, char *min);
+int getProcesses(char* pid, char* outfile);
+int drawProcessTree(char pids[128][128], int pids_size, char *outfile);
 
 int main() {
 
+	path_google = (char *) malloc(sizeof(char) * 1024);
+	path_sendmail = (char *) malloc(sizeof(char) * 1024);
+
+	char buf[128];
+	path_google = realpath("searchgoogle.py", buf);
+	
+	char buf2[128];
+	path_sendmail = realpath("sendmail.py", buf2);
+
 	commands = (char **) malloc(2048 * sizeof(char *));
 
-	char *builtins[] = {"alias", "bg", "bind", "break", "builtin",
+	char *builtins[] = {"google", "sendmail", "myfg", "mybg", "alarm", "psvis", "pause", "alias", "bg", "bind", "break", "builtin",
        "case", "cd", "clear", "command", "compgen", "complete", "continue", "declare", "dirs", "disown", "echo", "enable", "eval",
        "exec",  "exit",  "export",  "fc",  "fg",  "getopts", "hash", "help", "history", "if", "jobs", "kill", "let", "local",
        "logout", "popd", "printf", "pushd", "pwd", "read",  "readonly",  "return",  "set",  "shift",  "shopt",  "source",
        "suspend",  "test",  "times",  "trap",  "type", "typeset", "ulimit", "umask", "unalias", "unset", "until", "wait",
        "while"};
 
-	int builtins_len = 57;
+	int builtins_len = 64;
     
 	for (int i=0; i<2048; i++) {
 		commands[i] = malloc(512 * sizeof(char *));
@@ -461,6 +475,8 @@ int main() {
 		
 		free_command(command);
 	}
+
+	popen("sudo rmmod psvis", "r");
 
 	printf("\n");
 	return 0;
@@ -541,11 +557,20 @@ int process_command(struct command_t *command)
 		char *music = command->args[1];
 		setAlarm(music, hour, min);
 	}
+	else if(strcmp(command->name, "psvis") == 0)
+	{
+		char *pid = command->args[0];
+		char *outfile = command->args[1];
+		getProcesses(pid, outfile);
+	}
+
 	else if (strcmp(command->name, "sendmail") == 0) {
-		execlp("python", "python", "sendmail.py", "test", (char*) NULL);
+
+		execlp("python", "python", path_sendmail, "test", (char*) NULL);
 	}
 	else if (strcmp(command->name, "google") == 0) {
-		execlp("python", "python", "searchgoogle.py", "test", (char*) NULL);
+
+		execlp("python", "python", path_google, "test", (char*) NULL);
 	}
 	else
 	{
@@ -578,7 +603,6 @@ int process_command(struct command_t *command)
 	
 	return 0;
 }
-
 
 int handle_in_out(struct command_t *command) {
 
@@ -684,78 +708,36 @@ int handle_in_out(struct command_t *command) {
 }
 
 void setAlarm(char *music, char *hour, char *min){
+
+	// path of music file
 	char pathbuf[300];
 	char *musicpath = realpath(music,pathbuf);
-	char bash[300]; // alarm.sh to play audio
 
-	strcpy(bash, "!/bin/bash\nexport XDG_RUNTIME_DIR=/run/user/$(id -u)\n");
-	strcat(bash, "play ");
-	strcat(bash, musicpath);
-	strcat(bash, "\necho hello >> out.txt");
- 
- 	char out[100] = " >> /home/$USER/alarm.sh";
- 	char job[500]; // script to run by this command
-	strcpy(job, "echo \"");
-	strcat(job, bash);
-	strcat(job, "\"");
- 	strcat(job,out);
- 
-	char cron[300]; // create crontab directory file
-	strcpy(cron, "echo \"");
+	// create cronjob file and fill it with time schedule
+	char cron[300] = "\0"; // create crontab directory file
 	strcat(cron, min);
-	strcat(cron, " ");// if (!command->background)
-	// 	wait(NULL);
-
+	strcat(cron, " ");
 	strcat(cron, hour);
-	strcat(cron, " * * * ./alarm.sh\" >> /home/$USER/alarmFile");
-	
-	char *cronFile = "crontab /home/$USER/alarmFile";
- 	FILE *job_file = fopen("job.txt", "w");
+	strcat(cron, " * * * bash -c \"export XDG_RUNTIME_DIR=/run/user/$(id -u) && play ");
+	strcat(cron, musicpath);
+	strcat(cron, "\"");	
 
-	// write everything to a job file and then execute
-	fprintf(job_file, "touch /home/$USER/alarm.sh\n");
- 	fprintf(job_file, "%s\n", job);
-	fprintf(job_file, "chmod +x /home/$USER/alarm.sh\n");
+	// create file path to add cronjob list.
+	char *user = getenv("USER");
+	char filepath[100] = "/home/";
+	strcat(filepath, user);
+	strcat(filepath, "/alarmFile");
+
+ 	FILE *job_file = fopen(filepath, "a");
+	// write everything to a job file
 	fprintf(job_file, "%s\n", cron);
-	fprintf(job_file, "%s\n", cronFile);
-	fprintf(job_file, "rm -f /home/$USER/alarmFile\n");
-	fprintf(job_file, "rm -f job.txt\n");
  	fclose(job_file);
 
-	char *args[] = {"bash", "job.txt", NULL};
-  	execv("/bin/bash", args);
+	// run final file with bash command to complete.
+	char *args[] = {"crontab", filepath, NULL};
+  	execv("/usr/bin/crontab", args);
 	
 }
-
-int handle_auto_complete(char *command, char *complete) {
-
-	FILE *fp;int filter(const char *command, char * dirs[], int dirs_len, char *matched[]);
-void listFiles(const char *path, char * dirs[], int index);
-
-	char complete_[256] = "\0";
-	char python_command[256] = "python auto_complete.py ";
-	int matched_count = 0;
-
-	strcat(python_command, command);
-
-	fp = popen(python_command, "r");
-
-	if (fp == NULL) {
-		printf("Failed to run command\n");
-		exit(1);
-	}
-
-	while (fgets(complete_, sizeof(complete_), fp)) {
-		matched_count++;
-		strcat(complete, complete_);
-	}
-
-	pclose(fp);
-
-	return matched_count;
-
-}
-
 
 void listFiles(const char *path, char * dirs[], int index) {
     struct dirent *dp;
@@ -799,4 +781,71 @@ int filter(const char *command, char * dirs[], int dirs_len, char *matched[]) {
     return matched_index;
 
 }
+
+int getProcesses(char* pid, char* outfile){
+
+	FILE *dmg = popen("sudo dmesg -c", "r");
+	pclose(dmg);
+
+	char command[100] = "sudo insmod psvis.ko pid=";
+	strcat(command, pid);
+
+	FILE *fp = popen(command, "r");
+	pclose(fp);
+
+	fp = popen("sudo dmesg -c", "r");
+	char line[64];
+	char pids[128][128];
+	int counter = 0;
+	while(fgets(line, sizeof(line), fp)){
+
+		char *tok = strtok(line, "]");
+		tok = strtok(NULL, " ");
+
+		char command[64] = "ps -o pid,lstart | grep ";
+		strcat(command, tok);
+
+		printf("command: %s\n", command);
+
+		FILE *fp = popen(command, "r");
+		char buf[128];
+		fgets(buf, sizeof(buf), fp);
+		pclose(fp);
+
+		printf("buf: %s\n", buf);
+
+		strcpy(pids[counter], buf);
+
+		printf("pids: %s\n", pids[counter]);
+		counter++;
+	}
+	pclose(fp);
+
+	drawProcessTree(pids, counter, outfile);
+	return 0;
+}
+
+int drawProcessTree(char pids[128][128], int pids_size, char *outfile)
+{
+
+	FILE *graph = fopen("graph.dot", "w");
+	fprintf(graph, "digraph G {\n");
+	for(int i = 1; i < pids_size; i++){
+		fprintf(graph, "	\"%s\" -> \"%s\"\n", pids[0], pids[i]);
+	}
+	fprintf(graph,"\"%s\" [style=filled, fillcolor=red]\n", pids[0]);
+	fprintf(graph, "}\n");
+	fclose(graph);
+
+	int fd = open(outfile, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+    dup2(fd, 1);
+	close(fd);
+
+	char *args[] = {"dot", "graph.dot", "-Tpng", NULL};
+	execv("/usr/bin/dot", args);
+
+	return 0;
+
+}
+
 
