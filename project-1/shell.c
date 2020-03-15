@@ -583,21 +583,18 @@ int process_command(struct command_t *command)
 		command->args[0]=strdup(command->name);
 		// set args[arg_count-1] (last) to NULL
 		command->args[command->arg_count-1]=NULL;
-		char path[1024];
-		char which_command[] = "which ";
-		strcat(which_command, command->name);
-		FILE *fptr = popen(which_command, "r"); 
 
-		if (fptr == NULL) {
-			printf("Failed to run command\n" );
-			exit(1);
+		char path[128] = "/bin/";
+		char path2[128] = "/usr/bin/";
+
+		strcat(path, command->name);
+		strcat(path2, command->name);
+
+		int status = execv(path, command->args);
+
+		if (status < 0){
+			status = execv(path2,command->args);
 		}
-
-		fgets(path, sizeof(path), fptr);
-		pclose(fptr);
-		
-		path[strlen(path)-1] = '\0';
-		execv(path, command->args);
 		
 	}
 	
